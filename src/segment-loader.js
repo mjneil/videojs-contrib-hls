@@ -8,6 +8,7 @@ import SourceUpdater from './source-updater';
 import {Decrypter} from 'aes-decrypter';
 import Config from './config';
 import window from 'global/window';
+import muxjs from 'mux.js';
 
 // in ms
 const CHECK_BUFFER_DELAY = 500;
@@ -785,6 +786,15 @@ export default class SegmentLoader extends videojs.EventTarget {
     if (segmentInfo.timestampOffset !== this.sourceUpdater_.timestampOffset()) {
       this.sourceUpdater_.timestampOffset(segmentInfo.timestampOffset);
     }
+
+    debugger;
+
+    let start = performance.now();
+    let segmentTimeInfo = muxjs.mp2t.tools.inspect(segmentInfo.bytes);
+    let end = performance.now();
+    console.log(segmentTimeInfo);
+    console.log('time:', end - start, 'ms');
+    console.log('---------------------');
 
     this.sourceUpdater_.appendBuffer(segmentInfo.bytes,
                                      this.handleUpdateEnd_.bind(this));
