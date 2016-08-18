@@ -8,7 +8,7 @@ import SourceUpdater from './source-updater';
 import {Decrypter} from 'aes-decrypter';
 import Config from './config';
 import window from 'global/window';
-import muxjs from 'mux.js';
+import SegmentInspector from  './segment-inspector';
 
 // in ms
 const CHECK_BUFFER_DELAY = 500;
@@ -152,6 +152,7 @@ export default class SegmentLoader extends videojs.EventTarget {
     this.sourceUpdater_ = null;
     this.hls_ = settings.hls;
     this.xhrOptions_ = null;
+    this.segmentInspector_ = new SegmentInspector();
   }
 
   /**
@@ -175,6 +176,7 @@ export default class SegmentLoader extends videojs.EventTarget {
       this.sourceUpdater_.dispose();
     }
     this.resetStats_();
+    this.segmentInspector_.dispose();
   }
 
   /**
@@ -787,13 +789,14 @@ export default class SegmentLoader extends videojs.EventTarget {
       this.sourceUpdater_.timestampOffset(segmentInfo.timestampOffset);
     }
 
-    debugger;
+    // debugger;
 
     let start = performance.now();
-    let segmentTimeInfo = muxjs.mp2t.tools.inspect(segmentInfo.bytes);
+    segmentInfo.timeInfo = this.segmentInspector_.inspect(segmentInfo.bytes);
     let end = performance.now();
-    console.log(segmentTimeInfo);
-    console.log('time:', end - start, 'ms');
+    console.log(segmentInfo.timeInfo);
+    console.log('time:', end - start, 'ms - size', segmentInfo.bytes.byteLength);
+    console.log(segmentInfo.mediaIndex);
     console.log('---------------------');
 
     this.sourceUpdater_.appendBuffer(segmentInfo.bytes,
@@ -896,6 +899,7 @@ export default class SegmentLoader extends videojs.EventTarget {
 
     currentMediaIndex += playlist.mediaSequence - this.playlist_.mediaSequence;
     segment = playlist.segments[currentMediaIndex];
+    segment.timeInfo = segmentInfo.timeInfo;
 
     // Update segment meta-data (duration and end-point) based on timeline
     if (segment &&
