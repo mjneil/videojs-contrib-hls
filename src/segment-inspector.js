@@ -2,12 +2,8 @@
  * @file segment-inspector.js
  */
 
-import {inspect as inspectTs} from 'mux.js/lib/tools/ts-inspector.js';
-import {handleRollover} from 'mux.js/lib/m2ts/timestamp-rollover-stream.js';
-
-const MAX_TS = 8589934592;
-
-const RO_THRESH = 4294967296;
+import {TransportPacketStream, TransportParseStream, ElementaryStream, TimestampRolloverStream} from 'mux.js/lib/m2ts';
+import StreamTypes from 'mux.js/lib/m2ts/stream-types.js';
 
 const PES_TIMESCALE = 90000;
 
@@ -19,8 +15,11 @@ const PES_TIMESCALE = 90000;
  */
 export default class SegmentInspector {
   constructor() {
-    this.audioReferenceTimestamp_ = null;
-    this.videoReferenceTimestamp_ = null;
+    this.transportPacketStream = new TransportPacketStream();
+    this.transportParseStream = new TransportParseStream();
+    this.elementaryStream = new ElementaryStream();
+    this.audioTimestampRolloverStream = new TimestampRolloverStream('audio');
+    this.videoTimestampRolloverStream = new TimestampRolloverStream('video');
   }
 
   /**
@@ -28,8 +27,139 @@ export default class SegmentInspector {
    * information for the first and last packet.
    */
   inspect(segment) {
-    let segmentInfo = inspectTs(segment);
+    var tsPackets = [];
+    var segmentInfo;
+
+    this.transportPacketStream
+      .pipe(this.transportParseStream);
+
+    this.transportParseStream.on('data', function(event) {
+      tsPackets.push(event);
+    });
+
+    this.transportParseStream.on('done', () => {
+      segmentInfo = this.parsePackets_(tsPackets);
+    });
+
+    this.transportPacketStream.push(segment);
+    this.transportPacketStream.flush();
+
+    if (segmentInfo === undefined) {
+      throw "ERROROROROROR";
+    }
+
     this.adjustTimestamp_(segmentInfo);
+
+    this.dispose();
+    return segmentInfo;
+  }
+
+  /**
+   * Parse the given pes packets to gain information from the first and last complete packet
+   */
+  parsePackets_(packets) {
+    var segmentInfo = {
+      video: [],
+      audio: []
+    };
+
+    var processData = true;
+    var first = true;
+
+    this.elementaryStream.on('data', function(data) {
+      if (processData) {
+        if (data.type === 'audio') {
+          if ((first && segmentInfo.audio.length === 0) ||
+              (!first && segmentInfo.audio.length === 1)) {
+            segmentInfo.audio.push(data);
+          }
+        }
+        if (data.type === 'video') {
+          if ((first && segmentInfo.video.length === 0) ||
+              (!first && segmentInfo.video.length === 1)) {
+            segmentInfo.video.push(data);
+          }
+        }
+        if (first &&
+            segmentInfo.audio.length === 1 &&
+            segmentInfo.video.length === 1) {
+          processData = false;
+        } else if (!first &&
+                    segmentInfo.audio.length === 2 &&
+                    segmentInfo.video.length === 2) {
+          processData = false;
+        }
+      }
+    });
+
+    let i = 0;
+    let packet;
+
+    while(processData && i < packets.length) {
+      packet = packets[i];
+      this.elementaryStream.push(packet);
+      i++;
+    }
+
+    this.elementaryStream.flush();
+
+    processData = true;
+    first = false;
+
+    i = packets.length - 1;
+
+    let startIndex, endIndex;
+    endIndex = packets.length;
+
+    let lastPes = {
+      audio: {
+        done: false,
+        data: []
+      },
+      video: {
+        done: false,
+        data: []
+      }
+    };
+
+    // Walk back from the end to find the last video and audio pes packets
+    while(i > -1) {
+      packet = packets[i];
+      let streamType;
+
+      switch (packet.streamType) {
+        case StreamTypes.H264_STREAM_TYPE:
+          streamType = 'video';
+          break;
+        case StreamTypes.ADTS_STREAM_TYPE:
+          streamType = 'audio';
+          break;
+        default:
+          continue;
+      }
+      if (!lastPes[streamType].done) {
+        lastPes[streamType].data.unshift(packet);
+
+        if (packet.payloadUnitStartIndicator) {
+          lastPes[streamType].done = true;
+        }
+      }
+
+      if (lastPes.audio.done && lastPes.video.done) {
+        break;
+      }
+
+      i--;
+    }
+
+    lastPes.audio.data.forEach((packet) => {
+      this.elementaryStream.push(packet);
+    });
+    lastPes.video.data.forEach((packet) => {
+      this.elementaryStream.push(packet);
+    });
+    this.elementaryStream.flush();
+
     return segmentInfo;
   }
 
@@ -38,46 +168,35 @@ export default class SegmentInspector {
    * rollover and convert to seconds based on pes packet timescale (90khz clock)
    */
   adjustTimestamp_(segmentInfo) {
+    var i = 0;
 
-    if (segmentInfo.audio) {
-      if (this.audioReferenceTimestamp_ === null) {
-        this.audioReferenceTimestamp_ = segmentInfo.audio[0].dts;
-      }
+    this.audioTimestampRolloverStream.on('data', function(data) {
+      segmentInfo.audio[i].pts = data.pts / PES_TIMESCALE;
+      segmentInfo.audio[i].dts = data.dts / PES_TIMESCALE;
+    });
 
-      let maxDts = this.audioReferenceTimestamp_;
+    this.videoTimestampRolloverStream.on('data', function(data) {
+      segmentInfo.video[i].pts = data.pts / PES_TIMESCALE;
+      segmentInfo.video[i].dts = data.dts / PES_TIMESCALE;
+    });
 
-      segmentInfo.audio.forEach((segment) => {
-        segment.pts = handleRollover(segment.pts, this.audioReferenceTimestamp_);
-        segment.dts = handleRollover(segment.dts, this.audioReferenceTimestamp_);
-        maxDts = Math.max(maxDts, segment.dts);
-        segment.pts /= PES_TIMESCALE;
-        segment.dts /= PES_TIMESCALE;
-      });
+    this.audioTimestampRolloverStream.push(segmentInfo.audio[i]);
+    this.videoTimestampRolloverStream.push(segmentInfo.video[i]);
 
-      this.audioReferenceTimestamp_ = maxDts;
-    }
+    i = 1;
 
-    if (segmentInfo.video) {
-      if (this.videoReferenceTimestamp_ === null) {
-        this.videoReferenceTimestamp_ = segmentInfo.video[0].dts;
-      }
+    this.audioTimestampRolloverStream.push(segmentInfo.audio[i]);
+    this.videoTimestampRolloverStream.push(segmentInfo.video[i]);
 
-      let maxDts = this.videoReferenceTimestamp_;
-
-      segmentInfo.video.forEach((segment) => {
-        segment.pts = handleRollover(segment.pts, this.videoReferenceTimestamp_);
-        segment.dts = handleRollover(segment.dts, this.videoReferenceTimestamp_);
-        maxDts = Math.max(maxDts, segment.dts);
-        segment.pts /= PES_TIMESCALE;
-        segment.dts /= PES_TIMESCALE;
-      });
-
-      this.videoReferenceTimestamp_ = maxDts;
-    }
+    this.audioTimestampRolloverStream.flush();
+    this.videoTimestampRolloverStream.flush();
   }
 
   dispose() {
-    this.audioReferenceTimestamp_ = null;
-    this.videoReferenceTimestamp_ = null;
+    this.transportPacketStream.dispose();
+    this.transportParseStream.dispose();
+    this.elementaryStream.dispose();
+    this.audioTimestampRolloverStream.dispose();
+    this.videoTimestampRolloverStream.dispose();
   }
 }
