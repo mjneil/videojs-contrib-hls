@@ -135,6 +135,7 @@ export default class SegmentInspector {
           streamType = 'audio';
           break;
         default:
+          i--;
           continue;
       }
       if (!lastPes[streamType].done) {
