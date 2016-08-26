@@ -8,7 +8,7 @@ import SourceUpdater from './source-updater';
 import {Decrypter} from 'aes-decrypter';
 import Config from './config';
 import window from 'global/window';
-import {SegmentInspector} from 'mux.js/lib/tools/ts-inspector.js';
+import {inspect as inspectSegment} from 'mux.js/lib/tools/ts-inspector.js';
 
 // in ms
 const CHECK_BUFFER_DELAY = 500;
@@ -152,7 +152,7 @@ export default class SegmentLoader extends videojs.EventTarget {
     this.sourceUpdater_ = null;
     this.hls_ = settings.hls;
     this.xhrOptions_ = null;
-    this.segmentInspector_ = new SegmentInspector();
+    this.inspectCache_ = null;
   }
 
   /**
@@ -788,15 +788,18 @@ export default class SegmentLoader extends videojs.EventTarget {
       this.sourceUpdater_.timestampOffset(segmentInfo.timestampOffset);
     }
 
-    // debugger;
-
     let start = performance.now();
-    segmentInfo.timeInfo = this.segmentInspector_.inspect(segmentInfo.bytes);
+    segmentInfo.timeInfo = inspectSegment(segmentInfo.bytes, this.inspectCache_);
     let end = performance.now();
     console.log(segmentInfo.timeInfo);
     console.log('time:', end - start, 'ms - size', segmentInfo.bytes.byteLength);
     console.log(segmentInfo.mediaIndex);
     console.log('---------------------');
+    if (segmentInfo.timeInfo.video && segmentInfo.timeInfo.video.length === 2) {
+      this.inspectCache_ = segmentInfo.timeInfo.video[1].dts;
+    } else if (segmentInfo.timeInfo.audio && segmentInfo.timeInfo.audio.length === 2) {
+      this.inspectCache_ = segmentInfo.timeInfo.audio[1].dts;
+    }
 
     this.sourceUpdater_.appendBuffer(segmentInfo.bytes,
                                      this.handleUpdateEnd_.bind(this));
