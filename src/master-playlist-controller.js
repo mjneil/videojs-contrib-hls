@@ -779,6 +779,7 @@ export class MasterPlaylistController extends videojs.EventTarget {
    * @return {TimeRange} the current time
    */
   setCurrentTime(currentTime) {
+
     let buffered = Ranges.findRange(this.tech_.buffered(), currentTime);
 
     if (!(this.masterPlaylistLoader_ && this.masterPlaylistLoader_.media())) {
@@ -796,6 +797,11 @@ export class MasterPlaylistController extends videojs.EventTarget {
     // usual
     if (buffered && buffered.length) {
       return currentTime;
+    }
+
+    this.mainSegmentLoader_.clearBuffer();
+    if (this.audioSegmentLoader_) {
+      this.audioSegmentLoader_.clearBuffer();
     }
 
     // cancel outstanding requests so we begin buffering at the new
