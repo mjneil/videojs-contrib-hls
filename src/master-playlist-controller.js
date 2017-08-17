@@ -642,6 +642,10 @@ export class MasterPlaylistController extends videojs.EventTarget {
       }, ABORT_EARLY_BLACKLIST_SECONDS);
     });
 
+    this.mainSegmentLoader_.on('reseteverything', () => {
+      this.tech_.trigger('hls-reset-everything');
+    });
+
     this.audioSegmentLoader_.on('ended', () => {
       this.onEndOfStream();
     });
