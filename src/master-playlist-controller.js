@@ -14,6 +14,7 @@ import Decrypter from './decrypter-worker';
 import Config from './config';
 import { parseCodecs } from './util/codecs.js';
 import { createMediaTypes, setupMediaGroups } from './media-groups';
+import window from 'global/window';
 
 const ABORT_EARLY_BLACKLIST_SECONDS = 60 * 2;
 
@@ -319,6 +320,76 @@ export class MasterPlaylistController extends videojs.EventTarget {
     loaderStats.forEach((stat) => {
       this[stat + '_'] = sumLoaderStat.bind(this, stat);
     });
+
+    // DEBUG
+    window.hlsStart_ = Date.now();
+    window.rangeToArray_ = (range) => {
+      if (!range.length) {
+        return '[]';
+      }
+      let res = [];
+      for (let i = 0; i < range.length; i++) {
+        res.push(range.start(i) + '->' + range.end(i));
+      }
+      return res.join(',');
+    };
+    window.segments_ = () => {
+      let media = this.media();
+
+      if (!media || !media.segments || !media.segments.length) {
+        return '[]';
+      }
+
+      let res = [];
+      for (let i = 0; i < media.segments.length; i++) {
+        res.push(media.segments[i].duration);
+      }
+      return res.join(',');
+    };
+    window.targetDuration_ = () => {
+      let media = this.media();
+
+      if (!media || !media.targetDuration) {
+        return null;
+      }
+
+      return media.targetDuration;
+    };
+    window.mediaSequence_ = () => {
+      let media = this.media();
+      if (!media || !media.mediaSequence) {
+        return 0;
+      }
+      return media.mediaSequence;
+    };
+    window.mediaUri_ = () => {
+      let media = this.media();
+      if (!media || !media.uri) {
+        return null;
+      }
+      return media.uri;
+    };
+    window.debugLog_ = () => {
+      let segments = window.segments_();
+      let timeSinceStart = (Date.now() - window.hlsStart_) / 1000;
+      let buffered = window.rangeToArray_(this.tech_.buffered());
+      let uri = window.mediaUri_();
+      let ms = window.mediaSequence_();
+      let td = window.targetDuration_();
+      let ct = this.tech_.currentTime();
+
+      console.log('----------DEBUG----------');
+      console.log(`TimeSinceStart: ${timeSinceStart}`);
+      console.log(`Media URI: ${uri}`);
+      console.log(`TargetDuration: ${td}`);
+      console.log(`MediaSequence: ${ms}`);
+      console.log(`Segment Durations: ${segments}`);
+      console.log(`Buffered: ${buffered}`);
+      console.log(`CurrentTime: ${ct}`);
+      console.log('----------DEBUG----------');
+    };
+
+    window.debugLog_();
 
     this.masterPlaylistLoader_.load();
   }

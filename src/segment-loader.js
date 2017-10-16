@@ -1165,6 +1165,7 @@ export default class SegmentLoader extends videojs.EventTarget {
    */
   handleUpdateEnd_() {
     this.logger_('handleUpdateEnd_', 'segmentInfo:', this.pendingSegment_);
+    window.debugLog_();
 
     if (!this.pendingSegment_) {
       this.state = 'READY';

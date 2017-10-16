@@ -259,6 +259,9 @@ export default class PlaylistLoader extends EventTarget {
       }, refreshDelay);
     }
 
+    // DEBUG
+    window.debugLog_();
+
     this.trigger('loadedplaylist');
   }
 
