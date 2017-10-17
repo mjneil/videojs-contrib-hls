@@ -369,22 +369,43 @@ export class MasterPlaylistController extends videojs.EventTarget {
       }
       return media.uri;
     };
-    window.debugLog_ = () => {
+    window.buffered_ = () => {
+      let buffered = {
+        audio: null,
+        video: null
+      };
+
+      if (this.mediaSource.videoBuffer_ && this.mediaSource.videoBuffer_.buffered.length) {
+        buffered.video = window.rangeToArray_(this.mediaSource.videoBuffer_.buffered);
+      }
+      if (this.mediaSource.audioBuffer_ && this.mediaSource.audioBuffer_.buffered.length) {
+        buffered.audio = window.rangeToArray_(this.mediaSource.audioBuffer_.buffered);
+      }
+      return buffered;
+    };
+    window.seekable_ = () => {
+      return window.rangeToArray_(this.seekable());
+    };
+    window.debugLog_ = (logSrc) => {
       let segments = window.segments_();
       let timeSinceStart = (Date.now() - window.hlsStart_) / 1000;
-      let buffered = window.rangeToArray_(this.tech_.buffered());
+      let buffered = window.buffered_();
+      let seekable = window.seekable_();
       let uri = window.mediaUri_();
       let ms = window.mediaSequence_();
       let td = window.targetDuration_();
       let ct = this.tech_.currentTime();
 
       console.log('----------DEBUG----------');
+      console.log(`Source: ${logSrc}`)
       console.log(`TimeSinceStart: ${timeSinceStart}`);
       console.log(`Media URI: ${uri}`);
       console.log(`TargetDuration: ${td}`);
       console.log(`MediaSequence: ${ms}`);
       console.log(`Segment Durations: ${segments}`);
-      console.log(`Buffered: ${buffered}`);
+      console.log(`Seekable: ${seekable}`);
+      console.log(`Audio Buffered: ${buffered.audio}`);
+      console.log(`Video Buffered: ${buffered.video}`);
       console.log(`CurrentTime: ${ct}`);
       console.log('----------DEBUG----------');
     };

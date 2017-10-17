@@ -260,7 +260,7 @@ export default class PlaylistLoader extends EventTarget {
     }
 
     // DEBUG
-    window.debugLog_();
+    window.debugLog_('PlaylistLoader.haveMetadata');
 
     this.trigger('loadedplaylist');
   }
